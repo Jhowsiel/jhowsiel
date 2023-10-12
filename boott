@@ -1,0 +1,709 @@
+import nextcord
+from nextcord import Intents
+from nextcord.ext import commands
+from nextcord import Interaction
+import json
+from datetime import datetime, timedelta
+from collections import defaultdict
+
+intents = discord.Intents.all()
+intents.members = True
+
+# Configurações iniciais
+prefixo_comando = '!'
+intervalo_minimo = 1 # minutos
+server_id = ''
+promocao = ''
+av = ''
+remocao = ''
+afk = '' 
+mes = "SETEMBRO"
+top3 = '1125922091766649022' 
+cargo = 956405058545803274
+cargob = 956404937842118706
+id_cargo_atendente = 1003015383437021244
+icones = {1: "🥇", 2: "🥈", 3: "🥉"}
+cor_embed = discord.Color.green()
+last_used = {}
+token_do_bot = ''
+
+bot = commands.Bot(command_prefix=prefixo_comando, intents=intents)
+
+class client(discord.Client):
+    def __init__(self):
+        super().__init__(intents=discord.Intents.all())
+        self.synced = False  # Nós usamos isso para o bot não sincronizar os comandos mais de uma vez
+
+    async def setup_hook(self) -> None:
+        pass
+
+    async def on_ready(self):
+        await self.wait_until_ready()
+        if not self.synced:  # Checar se os comandos slash foram sincronizados
+            await tree.sync(guild=discord.Object(id=server_id))  # Você também pode deixar o id do servidor em branco para aplicar em todos servidores, mas isso fará com que demore de 1~24 horas para funcionar.
+            self.synced = True
+        print(f"Entramos como {self.user}.")
+
+aclient = client()
+
+tree = app_commands.CommandTree(aclient)
+
+@tree.command(guild=discord.Object(id=server_id), name='promover', description='Promove um staff de cargo')
+@app_commands.default_permissions(manage_roles=True)
+async def promover(interaction: app_commands.TranslationContext, staff: discord.Member, novo_cargo: discord.Role):
+    # Verifique se o usuário tem permissão para usar o comando
+    if not interaction.channel.permissions_for(interaction.user).manage_roles:
+        await interaction.response.send_message(f"[ERRO] Desculpe, mas você não tem permissão para usar esse comando.",ephemeral=True)
+        return
+      
+    # Obtenha o objeto de membro correspondente ao membro mencionado
+    member_obj = staff
+  
+    # Verifique se o novo cargo tem permissões de administrador
+    if novo_cargo.permissions.administrator:
+        await interaction.response.send_message(f"[ERRO] Desculpe, mas não foi possível promover {member_obj.mention} para o cargo {novo_cargo.name}. O Novo cargo nao tem permissao de Admim.",ephemeral=True)
+        return
+
+    # Verifique se o membro já tem o novo cargo
+    if novo_cargo in member_obj.roles:
+        await interaction.response.send_message(f"[AVISO] {member_obj.mention} já tem o cargo {novo_cargo.name}.",ephemeral=True)
+        return
+
+    # Verifique se o novo cargo é maior do que o cargo do bot na hierarquia de cargos
+    bot_member = interaction.guild.get_member(aclient.user.id)
+    if novo_cargo >= bot_member.top_role:
+        await interaction.response.send_message(f"[ERRO] Desculpe, mas não foi possível promover {member_obj.mention} para o cargo {novo_cargo.name}. O cargo que você está tentando atribuir ao membro é maior do que o cargo do bot.",ephemeral=True)
+        return
+
+    # Obtenha a lista de cargos do membro
+    roles = member_obj.roles
+
+    # Ordene a lista de cargos em ordem decrescente de posição
+    roles.sort(key=lambda x: x.position, reverse=True)
+
+    # Obtenha o cargo com a maior posição (ignorando o cargo @everyone)
+    top_role = roles[0]
+
+    # Obtenha o objeto de canal de destino pelo ID
+    channel = aclient.get_channel(int(promocao))
+
+    if channel is None:
+        await interaction.response.send_message("[ERRO] Não foi possível encontrar o canal de destino.",ephemeral=True)
+
+    # Obtenha o objeto de cargo correspondente ao novo cargo
+    role = novo_cargo
+
+    # Remova o cargo atual do membro promovido (apenas se ele tiver o cargo)
+    if top_role in member_obj.roles:
+        await member_obj.remove_roles(top_role)
+        # Altere o cargo do membro promovido para o novo cargo
+        await member_obj.add_roles(role)
+        # Envie uma mensagem direta para o usuário que usou o comando
+        await interaction.response.send_message(f"{member_obj.mention} foi promovido para o cargo de {novo_cargo.name}!",ephemeral=True)
+
+    
+        # Crie um objeto Embed com as informações da promoção
+        embed = discord.Embed(title=f"Controle de Staff - Promoção", color=0x1f8b4c)
+        informacoes_prom = f"> **Staff:** {member_obj.display_name}\n > **Cargo Anterior:** {top_role.name}\n > **Novo Cargo:** {role.name}"
+
+        embed.add_field(name="Informações da Promoção", value=informacoes_prom, inline=False)
+
+# Adicione a miniatura do membro promovido no Embed
+        if member_obj.avatar is not None:
+            embed.set_thumbnail(url=member_obj.avatar.url)
+        else:
+            # Handle the case when avatar is None, maybe set a default url
+            try:
+                embed.set_thumbnail(url="https://cdn.discordapp.com/avatars/1123240542579478589/52fa8b0ebc07804eff03031f4ad759fb.webp")
+            except Exception:
+                pass  # If there's an error setting the thumbnail, just ignore it
+
+# Adicione o autor da promoção ao Embed
+            embed.set_footer(text=f"Promovido por {interaction.user.display_name} em {discord.utils.utcnow().strftime('%d/%m/%Y')}.", icon_url=interaction.user.avatar.url)
+
+# Envie o Embed no canal de destino
+            await channel.send(embed=embed)
+
+
+# Função para carregar as advertências do arquivo
+def carregar_advertencias():
+    try:
+        with open('advertencias.json', 'r') as f:
+            # Carregue o arquivo JSON e converta-o em um dicionário padrão
+            return defaultdict(list, json.load(f))
+    except FileNotFoundError:
+        # Se o arquivo não existir, retorne um dicionário padrão vazio
+        return defaultdict(list)
+
+# Carregue as advertências do arquivo
+advertencias = carregar_advertencias()
+
+@tree.command(guild=discord.Object(id=server_id), name='retirada', description='Remove o Staff')
+@app_commands.default_permissions(manage_roles=True)
+async def retirada(interaction: app_commands.TranslationContext, staff: discord.Member, motivo: str): 
+    # Verifique se o usuário tem permissão para usar o comando
+    if not interaction.channel.permissions_for(interaction.user).manage_roles:
+        await interaction.response.send_message(f"[ERRO] Desculpe, mas você não tem permissão para usar esse comando.",ephemeral=True)
+        return
+      
+    # Obtenha o objeto de membro correspondente ao membro mencionado
+    member_obj = staff
+
+    # Obtenha a lista de cargos do membro
+    roles = member_obj.roles
+
+    # Ordene a lista de cargos em ordem decrescente de posição
+    roles.sort(key=lambda x: x.position, reverse=True)
+
+    # Obtenha o cargo com a maior posição (ignorando o cargo @everyone)
+    top_role = roles[0]
+
+    try:
+        # Remova todos os cargos do membro
+        await member_obj.edit(roles=[])
+    except discord.Forbidden:
+        # O bot não tem permissão para remover os cargos do membro
+        await interaction.response.send_message("[ERRO] Desculpe, eu não tenho permissão para remover os cargos desse membro.",ephemeral=True)
+        return
+
+    # Obtenha o objeto de canal de destino pelo ID
+    channel = aclient.get_channel(int(remocao))
+
+    if channel is None:
+        await interaction.response.send_message("[ERRO] Não foi possível encontrar o canal de destino.",ephemeral=True)
+        return
+
+    # Load the warnings from the JSON file
+    advertencias = carregar_advertencias()
+
+    # Crie um objeto Embed com as informações da retirada
+    embed = discord.Embed(title="Controle de Staff - Retirada", color=0xe74c3c)
+    embed.set_thumbnail(url=member_obj.avatar.url)
+
+    total_adv = len(advertencias[str(staff.id)]['advertencias'])
+  
+    informacoes_retirada = f"> **Staff:** {member_obj.display_name}\n > **Discord:** {member_obj.mention}\n > **ID:** {member_obj.id}\n > **Ultimo Cargo:** {top_role.name}\n > **Advertências:** {total_adv}\n > **Entrada na Staff:** {member_obj.joined_at.strftime('%d/%m/%Y')}"
+
+    embed.add_field(name="Informações do Staff", value=informacoes_retirada, inline=False)
+    embed.add_field(name="**Motivo**", value=motivo, inline=False)
+    
+# Adicione o autor da promoção ao Embed
+    embed.set_footer(text=f"Removido por {interaction.user.display_name} em {discord.utils.utcnow().strftime('%d/%m/%Y')}.", icon_url=interaction.user.avatar) 
+  
+    # Envie o Embed no canal de destino
+    await channel.send(embed=embed)
+
+    try:
+        # Tente enviar uma mensagem para o staff informando o motivo da retirada
+        await member_obj.send(f"Olá {member_obj.display_name}, você foi removido da staff do servidor 2 pelo seguinte motivo: {motivo}")
+        
+    except discord.Forbidden:
+        # O bot não tem permissão para enviar uma mensagem privada para o staff
+        pass
+
+    try:
+        # Expulse o membro do servidor
+        await member_obj.kick(reason=motivo)
+        
+    except discord.Forbidden:
+        # O bot não tem permissão para expulsar o membro
+        await interaction.response.send_message("[ERRO] Desculpe, eu não tenho permissão para expulsar esse membro.",ephemeral=True)
+        return
+
+    # Envie uma mensagem confirmando que a remoção foi realizada com sucesso
+    await interaction.response.send_message(f"A remoção do staff {member_obj.mention} foi realizada com sucesso.",ephemeral=True)
+	
+# Função para carregar as advertências do arquivo
+def carregar_advertencias():
+    try:
+        with open('advertencias.json', 'r') as f:
+            # Carregue o arquivo JSON e converta-o em um dicionário padrão
+            data = json.load(f)
+            # Certifique-se de que as chaves do dicionário são strings
+            advertencias = defaultdict(lambda: defaultdict(list), {str(k): v for k, v in data.items()})
+            return advertencias
+    except FileNotFoundError:
+        # Se o arquivo não existir, retorne um dicionário padrão vazio
+        return defaultdict(lambda: defaultdict(list))
+
+# Função para salvar as advertências no arquivo
+def salvar_advertencias(advertencias):
+    with open('advertencias.json', 'w') as f:
+        # Converta o dicionário padrão de volta em um dicionário regular antes de salvar
+        json.dump(dict(advertencias), f, indent=4)
+
+# Carregue as advertências do arquivo
+advertencias = carregar_advertencias()
+
+@tree.command(guild=discord.Object(id=server_id), name='advertir', description='Aplicar advertência no staff')
+@app_commands.default_permissions(manage_roles=True)
+async def advertir(interaction: app_commands.TranslationContext, staff: discord.Member, motivo: str):
+    # Obtenha o objeto de membro correspondente ao usuário especificado
+    member_obj = staff
+
+    # Verifique se o membro tem algum cargo (exceto aqueles sem cargo)
+    if not member_obj.roles:
+        await interaction.response.send_message(f"Desculpe, mas o usuário especificado não é um membro da equipe.")
+        return
+
+    # Obtenha o objeto de canal de destino pelo ID
+    channel = aclient.get_channel(int(av))
+
+    if channel is None:
+        await interaction.response.send_message("Não foi possível encontrar o canal de destino.")
+        return
+
+     # Adicione a advertência ao registro do staff
+    data_nova_advertencia = discord.utils.utcnow().strftime('%d/%m/%Y')
+    advertencias[str(staff.id)]['advertencias'].append({
+        'data': data_nova_advertencia,
+        'motivo': motivo
+    })
+
+    # Atualize o total de advertências do membro da equipe
+    total_adv = len(advertencias[str(staff.id)]['advertencias'])
+    advertencias[str(staff.id)]['total'] = total_adv
+
+    salvar_advertencias(advertencias)
+
+    # Crie um objeto Embed com as informações da advertência
+    embed = discord.Embed(title="Controle de Staff - Advertências", color=0xff0000)
+    informacoes_staff = f"> **Staff:** {member_obj.display_name}\n > **Discord:** {member_obj.mention}\n > **Advertências:** {total_adv}"
+    informacoes_adv = f"> **Motivo:** {motivo}"
+    embed.set_thumbnail(url=member_obj.avatar.url)
+    embed.add_field(name="Informações do Staff", value=informacoes_staff, inline=False)
+    embed.add_field(name="Última Advertência", value=informacoes_adv, inline=False)
+	
+    embed.set_footer(text=f"Responsável: {interaction.user.display_name} | {data_nova_advertencia}.", icon_url=interaction.user.avatar) 
+	
+    # Envie o Embed no canal de destino
+    await channel.send(embed=embed)
+
+    # Envie uma mensagem confirmando que a remoção foi realizada com sucesso
+    await interaction.response.send_message(f"{member_obj.mention} foi advertido com sucesso.",ephemeral=True)
+
+@tree.command(guild=discord.Object(id=server_id), name='ausencia', description='Informa a ausência da staff')
+@commands.cooldown(1, 300, commands.BucketType.user)
+async def ausencia(interaction: app_commands.TranslationContext, motivo: str, tempo: str):
+    # Obtenha o objeto de membro correspondente ao usuário que usou o comando
+    member_obj = interaction.user
+
+    if member_obj in last_used:
+        # Calcule quanto tempo passou desde a última vez que o usuário usou o comando
+        time_since_last_use = datetime.now() - last_used[member_obj]
+
+        # Verifique se o intervalo desejado já passou
+        if time_since_last_use < timedelta(minutes=5):
+            # Se o intervalo ainda não passou, informe ao usuário quanto tempo ele precisa esperar
+            await interaction.response.send_message(f"Você precisa esperar **5 minutos** antes de poder usar este comando novamente.",ephemeral=True)
+            return
+    # Atualize a hora em que o usuário usou o comando pela última vez
+    last_used[member_obj] = datetime.now()
+
+    # Verifique se o membro tem algum cargo (exceto aqueles sem cargo)
+    if not member_obj.roles:
+        await interaction.response.send_message(f"Desculpe, mas você não tem permissão para usar esse comando.",ephemeral=True)
+        return
+
+    # Obtenha o objeto de canal de destino pelo ID
+    channel = aclient.get_channel(int(afk))
+
+    if channel is None:
+        await interaction.response.send_message("Não foi possível encontrar o canal de destino.")
+        return
+
+    # Carregue o arquivo JSON com as informações das ausências
+    with open('ausencias.json', 'r') as f:
+        ausencias = json.load(f)
+
+    # Verifique se o membro já tem uma entrada no arquivo JSON
+    member_id = str(member_obj.id)
+    if member_id not in ausencias:
+        # Se não tiver, crie uma nova entrada para o membro
+        ausencias[member_id] = {
+            'ausencias': [],
+            'total_ausencias_semana': 0
+        }
+
+    # Calcule o número de ausências na última semana
+    data_atual = datetime.now()
+    uma_semana_atras = data_atual - timedelta(days=7)
+    total_ausencias_semana = 0
+    for ausencia in ausencias[member_id]['ausencias']:
+        data_ausencia = datetime.strptime(ausencia['data'], '%Y-%m-%d %H:%M:%S.%f')
+
+        if data_ausencia > uma_semana_atras:
+            total_ausencias_semana += 1
+
+    # Verifique se o membro já atingiu o limite de 3 ausências por semana
+    if total_ausencias_semana >= 3:
+        await interaction.response.send_message(f"Desculpe, mas você atingiu o limite de 3 ausências por semana.",ephemeral=True)
+        return
+
+    # Adicione a nova ausência à lista de ausências do membro
+    data_nova_ausencia = datetime.now()
+    ausencias[member_id]['ausencias'].append({
+        'data': str(data_nova_ausencia),
+        'motivo': motivo,
+        'tempo': tempo
+    })
+
+    # Atualize o total de ausências na última semana
+    total_ausencias_semana += 1
+    ausencias[member_id]['total_ausencias_semana'] = total_ausencias_semana
+
+    # Salve as alterações no arquivo JSON
+    with open('ausencias.json', 'w') as f:
+        json.dump(ausencias, f, indent=4)
+
+    # Crie um objeto Embed com as informações da ausência e o total de ausências na última semana
+    embed = discord.Embed(title=f"Controle de Ausência - Servidor 2", color=0xa84300)
+    
+    informacoes_ausencia = f"> **Staff:** {member_obj.display_name}\n > **Discord:** {member_obj.mention}\n \n > **Motivo:** {motivo}\n > **Tempo:** {tempo}"
+    
+    embed.add_field(name="Informações da Ausência", value=informacoes_ausencia, inline=False)
+  
+    controle_ausencia = f"> **Data da Última Ausência:** {data_nova_ausencia.strftime('%d/%m/%Y')}\n > **Ausências na Semana:** {str(total_ausencias_semana)}/3"
+    
+    embed.add_field(name="Controle de Ausência", value=controle_ausencia, inline=False)
+    
+    embed.set_thumbnail(url=member_obj.avatar.url)
+
+    # Envie o Embed no canal de destino
+    await channel.send(embed=embed)
+    await interaction.response.send_message(f"Justificativa de ausência enviada.\nTempo: **{tempo}**.\nTotal de Ausências na Semana: **{total_ausencias_semana}/3**",ephemeral=True)
+		
+@tree.command(guild=discord.Object(id=server_id), name='limparausencias', description='Limpa todas as ausências armazenadas')
+@app_commands.default_permissions(manage_roles=True)
+async def limpar_ausencias(interaction: app_commands.TranslationContext):
+    # Carregue o arquivo JSON com as informações das ausências
+    with open('ausencias.json', 'r') as f:
+        ausencias = json.load(f)
+
+    # Crie uma lista para armazenar as informações dos staffs
+    staffs = []
+
+    # Limpe todas as ausências armazenadas e obtenha as informações dos staffs
+    for member_id, member_data in ausencias.items():
+        # Obtenha o objeto de membro pelo ID
+        member = interaction.guild.get_member(int(member_id))
+        if member is None:
+            continue
+
+        # Adicione as informações do staff à lista
+        data_ultima_ausencia = datetime.strptime(member_data['ausencias'][-1]['data'], '%Y-%m-%d %H:%M:%S.%f').strftime('%d/%m/%Y') if member_data['ausencias'] else 'N/A'
+        staffs.append(f"**{member.display_name}** - Ausências: **{member_data['total_ausencias_semana']}/3** - Última ausência: **{data_ultima_ausencia}**")
+
+        # Limpe as ausências do membro
+        member_data['ausencias'] = []
+        member_data['total_ausencias_semana'] = 0
+
+    # Salve as alterações no arquivo JSON
+    with open('ausencias.json', 'w') as f:
+        json.dump({}, f)
+
+    # Obtenha o objeto de canal de destino pelo ID
+    channel = aclient.get_channel(int(afk))
+
+    if channel is None:
+        await interaction.response.send_message("Não foi possível encontrar o canal de destino.")
+        return
+
+    # Crie um objeto Embed com as informações da limpeza de ausências
+    embed = discord.Embed(title="🧹 Limpeza de Ausências", color=0xa84300)
+    embed.add_field(name="Responsável", value=interaction.user.display_name, inline=False)
+    embed.add_field(name="Staffs com Ausências", value="\n".join(staffs), inline=False)
+    embed.set_thumbnail(url=interaction.user.avatar.url)
+  
+	  
+    embed.set_footer(text=f"Todas as ausências da semana foram limpas!.") 
+
+    # Envie o Embed no canal de destino
+    await channel.send(embed=embed)
+    await interaction.response.send_message(f"Todas as ausências da semana foram limpas!.",ephemeral=True)
+
+@tree.command(guild=discord.Object(id=server_id), name="staff", description="Registra o seu nick de emoji (Admin) ")
+@commands.cooldown(1, 30, commands.BucketType.user) # Adiciona um decorador de cooldown
+async def staff(interaction, nick: str, admin: str):
+    # Altera o nome do usuário no servidor para o emoji
+    member = interaction.user # Aqui você usa interaction.user em vez de ctx.author
+    await member.edit(nick=admin)
+    
+    # Envia um embed em um canal com as informações do usuário
+    channel_id = 1138177952811585566 # Insira o ID do canal desejado
+    channel = aclient.get_channel(channel_id) # Aqui você usa 
+  
+    embed = discord.Embed(title="", color=0x50C7C7)
+    embed.add_field(name="**Dados**", value=f"**Discord**: {member.mention}\n**ID:**{member.id}", inline=False)
+    embed.add_field(name="**Personagens**", value=f"**RP**: {nick}\n**Admin:** {admin}", inline=False)
+    embed.set_thumbnail(url=member.avatar.url)
+
+    embed.set_author(name="Registro de Nick",url="https://docs.google.com/spreadsheets/d/1IS8FKYjvCaRxRylwAelSNeCzrs6VRxh_iF4dHdbmhOo/edit#gid=196671670",icon_url="https://cdn.discordapp.com/attachments/1144628424976109660/1144632998285811802/Copia_de_Logo.png")
+  
+# Adicione o autor da promoção ao Embed
+    embed.set_footer(text=f"Entrada em {discord.utils.utcnow().strftime('%d/%m/%Y')}.") 
+    await channel.send(embed=embed)
+
+    # Responde à interação com uma mensagem de confirmação
+    await interaction.response.send_message(f"Seu nick de staff foi registrado.",ephemeral=True)
+
+votacao_iniciada = False
+
+@tree.command(guild=discord.Object(id=server_id), name="iniciarv")
+@app_commands.default_permissions(manage_roles=True)
+async def iniciarv(interaction: app_commands.TranslationContext):
+    global votacao_iniciada
+
+# Obtenha o objeto de canal de destino pelo ID
+    channel = aclient.get_channel(int(top3))
+
+    if channel is None:
+        await interaction.response.send_message("Não foi possível encontrar o canal de destino.")
+        return
+
+    # Inicia a votação
+    votacao_iniciada = True
+    embed = discord.Embed(title="TOP 3 | MÊS DE {}".format(mes),
+        description="### A Votacao do TOP 3 • {} foi iniciada!  \n\nPara votar, use o comando `/votar` seguido pelo nome do staff e o motivo do seu voto. Por exemplo: `/votar @Jhowsiel faz um ótimo trabalho`\n\n### Explicações sobre os comandos:\n\n> `/votar` | Com este comando você vota no staff e também apresenta um motivo do porque desta votação.\n> `/rvoto` | Com este comando é possível você deletar o seu voto anterior, caso você queira votar novamente.\n\n<@&{}>!".format(mes, cargo),
+        colour=0x51f5a0)
+  
+    embed.set_thumbnail(url="https://imgur.com/gebGlm1.png")
+        
+    embed.set_footer(text="Servidor 2 - TOP 3 • {}".format(mes),icon_url="https://imgur.com/gebGlm1.png")
+  
+    await channel.send(embed=embed)
+    
+    # Envie uma mensagem confirmando que a remoção foi realizada com sucesso
+    await interaction.response.send_message(f"A Votação DO TOP3 - {mes} foi iniciada com sucesso.",ephemeral=True)
+
+@tree.command(guild=discord.Object(id=server_id), name="limparvt")
+@app_commands.default_permissions(manage_roles=True)
+async def limparvt(interaction: app_commands.TranslationContext):
+    # Limpa os votos da edição anterior
+    with open('votos.json', 'w') as f:
+        json.dump([], f)
+    await interaction.response.send_message("Votos limpos!",ephemeral=True)
+
+@tree.command(guild=discord.Object(id=server_id), name="resultado")
+@app_commands.default_permissions(manage_roles=True)
+async def resultado(interaction: app_commands.TranslationContext):
+
+  # Obtenha o objeto de canal de destino pelo ID
+    channel = aclient.get_channel(int(top3))
+
+    if channel is None:
+        await interaction.response.send_message("Não foi possível encontrar o canal de destino.")
+        return
+      
+    # Envia os resultados em um embed
+    with open('votos.json', 'r') as f:
+        votos = json.load(f)
+    if not votos:
+        await interaction.response.send_message("Não há votos suficientes para enviar o resultado.",ephemeral=True)
+        return
+    votos_count = {}
+    for voto in votos:
+        staff_id = voto['staff_id']
+        if staff_id not in votos_count:
+            votos_count[staff_id] = 0
+        votos_count[staff_id] += 1
+    top_3 = sorted(votos_count.items(), key=lambda x: x[1], reverse=True)[:3]
+    embed = discord.Embed(title="TOP 3 | MÊS DE {}".format(mes),
+        description="### Prêmiações:\n> 1º O Staff que receber o primeiro lugar com mais votos, receberá uma prêmiação de **500 UGs**\n> 2º O Staff que receber o segundo lugar com mais votos, receberá uma prêmiação de **370 UGs**\n> 3º O Staff que receber o terceiro lugar com mais votos, receberá uma prêmiação de **250 UGs**",colour=0x51f5a0)
+    for i, (staff_id, voto) in enumerate(top_3):
+        staff = await interaction.guild.fetch_member(staff_id)
+        icone = icones.get(i+1, "🏅")  # usa '🏅' como ícone padrão se a colocação for maior que 3
+        embed.add_field(name=f"{icone} TOP {i+1} • STAFF ", value=f"{staff.mention} com {voto} votos.", inline=False)
+
+        embed.set_thumbnail(url="https://imgur.com/gebGlm1.png")
+        
+        embed.set_footer(text="Servidor 2 - TOP 3 • {}".format(mes),icon_url="https://imgur.com/gebGlm1.png")
+
+    await channel.send(embed=embed)
+    await interaction.response.send_message(f"O resultado da Votação DO TOP3 - {mes} foi enviado com sucesso.",ephemeral=True)
+
+@tree.command(guild=discord.Object(id=server_id), name="votar")
+async def votar(interaction: app_commands.TranslationContext, staff: discord.Member, motivo: str):
+    global votacao_iniciada
+    if not votacao_iniciada:
+        await interaction.response.send_message("A votação ainda não foi iniciada.",ephemeral=True)
+        return
+
+   # Verifica se o usuário tem o cargo permitido
+    if cargo not in [role.id for role in interaction.user.roles]:
+        await interaction.response.send_message("Você não pode votar nessa votação. Se isso for um erro entre em contato com a Gerência do Servidor 2", ephemeral=True)
+        return
+
+    # Verifica se o usuário tem o cargo bloqueado
+    if cargob in [role.id for role in interaction.user.roles]:
+        await interaction.response.send_message("Aprendiz não pode votar nessa votação. Se isso for um erro entre em contato com a Gerência do Servidor 2", ephemeral=True)
+        return
+      
+    # Verifica se o usuário já votou
+    with open('votos.json', 'r') as f:
+        votos = json.load(f)
+    if any(voto['user_id'] == interaction.user.id for voto in votos):
+        await interaction.response.send_message("Você já votou.",ephemeral=True)
+    else:
+        # Adiciona o voto
+        voto = {
+            'user_id': interaction.user.id,
+            'staff_id': staff.id,
+            'motivo': motivo
+        }
+        votos.append(voto)
+        with open('votos.json', 'w') as f:
+            json.dump(votos, f)
+        await interaction.response.send_message(f"Voto registrado para {staff.mention} pelo motivo: {motivo}",ephemeral=True)
+
+@tree.command(guild=discord.Object(id=server_id), name="rvoto")
+async def rvoto(interaction: app_commands.TranslationContext):
+    # Verifica se o usuário já votou
+    with open('votos.json', 'r') as f:
+        votos = json.load(f)
+    voto_index = next((i for i, voto in enumerate(votos) if voto['user_id'] == interaction.user.id), None)
+    if voto_index is not None:
+        # Remove o voto atual e permite que o usuário vote novamente
+        del votos[voto_index]
+        with open('votos.json', 'w') as f:
+            json.dump(votos, f)
+        await interaction.response.send_message("Voto removido. Você pode votar novamente.",ephemeral=True)
+    else:
+        await interaction.response.send_message("Você ainda não votou.",ephemeral=True)
+
+class ReportModal(nextcord.ui.View):
+    def __init__(self):
+        super().__init__()
+        self.value = None
+
+    @nextcord.ui.button(label="Denunciar", style=nextcord.ButtonStyle.blurple, custom_id="report")
+    async def report(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        await self.create_modal(interaction)
+
+    @nextcord.ui.button(label="Denunciar Anônimo", style=nextcord.ButtonStyle.blurple, custom_id="report_anon")
+    async def anonymous_report(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        await self.create_modal(interaction)
+
+    async def create_modal(self, interaction):
+        components = [
+            nextcord.ui.InputText(placeholder='Nick do acusado', custom_id='accused'),
+            nextcord.ui.InputText(placeholder='Motivo da denúncia', custom_id='reason'),
+            nextcord.ui.InputText(placeholder='Link para o arquivo de prova', custom_id='evidence')
+        ]
+        view = nextcord.ui.View()
+        for component in components:
+            view.add_item(component)
+        await interaction.response.send_message("Por favor, preencha as informações necessárias:", view=view, ephemeral=True)
+
+class ReportView(nextcord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+        self.value = None
+
+    @nextcord.ui.button(label="Denunciar Staff", style=nextcord.ButtonStyle.blurple, emoji="⚠️")
+    async def report(self, interaction: nextcord.Interaction, button: nextcord.ui.Button):
+        self.value = True
+        self.stop()
+        await interaction.response.send_message("Por favor, preencha as informações necessárias:", view=ReportModal(), ephemeral=True)
+
+    @nextcord.ui.button(label="Denunciar Staff Anônimo", style=nextcord.ButtonStyle.blurple, emoji="🕵️‍♂️")
+    async def anonymous_report(self, interaction: nextcord.Interaction, button: nextcord.ui.Button):
+        self.value = True
+        self.stop()
+        await interaction.response.send_message("Por favor, preencha as informações necessárias:", view=ReportModal(), ephemeral=True)
+
+class Dropdown(nextcord.ui.Select):
+    def __init__(self):
+        options = [
+            nextcord.SelectOption(value="ajuda",label="Ajuda", emoji="👋"),
+            nextcord.SelectOption(value="atendimento",label="Atendimento", emoji="📨"),
+            nextcord.SelectOption(value="solicitacao",label="Solicitação", emoji="📝"),
+            nextcord.SelectOption(value="denunciar",label="Denúncia", emoji="⚠️"),
+        ]
+        super().__init__(
+            placeholder="Selecione uma opção...",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="persistent_view:dropdown_help"
+        )
+
+    async def callback(self, interaction: nextcord.Interaction):
+        if self.values[0] == "ajuda":
+            await interaction.response.send_message("Se você precisar de ajuda, coloque nos comentários do vídeo",ephemeral=True)
+        elif self.values[0] == "atendimento":
+            await interaction.response.send_message("Clique abaixo para criar um ticket",ephemeral=True,view=CreateTicket())
+        elif self.values[0] == "solicitacao":
+            # Ação para a opção "Solicitação"
+            await interaction.response.send_message("Você selecionou a opção 'Solicitação'. O que você gostaria de solicitar?", ephemeral=True)  
+        elif self.values[0] == "denunciar":
+            # Ação para a opção "Denunciar"
+            await interaction.response.send_message("Você selecionou a opção 'Denúncia'. Por favor, escolha uma das opções abaixo:", ephemeral=True, view=ReportView())
+
+class DropdownView(nextcord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+        self.add_item(Dropdown())
+
+class CreateTicket(nextcord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+        self.value=None
+
+    @nextcord.ui.button(label="Abrir Ticket",style=nextcord.ButtonStyle.blurple,emoji="➕")
+    async def confirm(self,interaction: nextcord.Interaction, button: nextcord.ui.Button):
+        self.value = True
+        self.stop()
+
+        ticket = None
+        for thread in interaction.channel.threads:
+            if f"{interaction.user.id}" in thread.name:
+                if thread.archived:
+                    ticket = thread
+                else:
+                    await interaction.response.send_message(ephemeral=True,content=f"Você já tem um atendimento em andamento!")
+                    return
+
+        async for thread in interaction.channel.archived_threads(private=True):
+            if f"{interaction.user.id}" in thread.name:
+                if thread.archived:
+                    ticket = thread
+                else:
+                    await interaction.edit_original_response(content=f"Você já tem um atendimento em andamento!",view=None)
+                    return
+        
+        if ticket != None:
+            await ticket.edit(archived=False,locked=False)
+            await ticket.edit(name=f"{interaction.user.name} ({interaction.user.id})",auto_archive_duration=10080,invitable=False)
+        else:
+            ticket = await interaction.channel.create_thread(name=f"{interaction.user.name} ({interaction.user.id})",auto_archive_duration=10080)#,type=discord.ChannelType.public_thread)
+            await ticket.edit(invitable=False)
+
+        await interaction.response.send_message(ephemeral=True,content=f"Criei um ticket para você! {ticket.mention}")
+        await ticket.send(f"📩  **|** {interaction.user.mention} ticket criado! Envie todas as informações possíveis sobre seu caso e aguarde até que um atendente responda.\n\nApós a sua questão ser sanada, você pode usar `/fecharticket` para encerrar o atendimento!")
+
+@tree.command(guild = discord.Object(id=server_id), name = 'setup', description='Setup')
+@commands.has_permissions(manage_guild=True)
+async def setup(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="Ouvidoria da Staff - Servidor 2",
+        description="Nessa seção, você pode tirar suas dúvidas, fazer solicitacoes, denunciar staffs ou entrar em contato com a Gerencia+ do Servidor 2.\n\nPara evitar problemas, leia as opções com atenção.",
+        color=discord.Color.blue()
+    )
+    embed.set_image(url="https://cdn.discordapp.com/icons/95638152290.webp")
+    await interaction.response.send_message(embed=embed, view=DropdownView())
+
+
+
+@tree.command(guild = discord.Object(id=server_id), name="fecharticket",description='Feche um atendimento atual.')
+async def _fecharticket(interaction: discord.Interaction):
+    mod = interaction.guild.get_role(id_cargo_atendente)
+    if str(interaction.user.id) in interaction.channel.name or mod in interaction.author.roles:
+        await interaction.response.send_message(f"O ticket foi arquivado por {interaction.user.mention}, obrigado por entrar em contato!")
+        await interaction.channel.edit(archived=True,locked=True)
+    else:
+        await interaction.response.send_message("Isso não pode ser feito aqui...")
+
+
+aclient.run(token_do_bot)a
